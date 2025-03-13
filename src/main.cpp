@@ -20,7 +20,7 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 Servo servo360;
 Servo servo180;
 
-int servo180Pos = 92;
+int servo180Pos = 109;
 int servo360Current = 90; // Current position of 360 servo
 int servo360Target = 90;  // Target position
 int servo180range = 45;
@@ -29,9 +29,14 @@ const int SERVO360_STEP = 1; // Step size for 360 servo (smaller = slower)
 const unsigned long CMD_TIMEOUT = 200;
 const unsigned long REPEAT_DELAY = 300;
 const unsigned long SERVO_UPDATE_INTERVAL = 20; // Time between steps (ms)
+const unsigned long RELAY_DEFAULT_TIME = 500;   // 0.5 วินาที
+const unsigned long RELAY_EXTEND_TIME = 300;    // เพิ่มเวลา 500ms ทุกครั้งที่กดซ้ำ
 
 bool relay1State = false;
 bool relay2State = false;
+unsigned long relay1StartTime = 0;
+unsigned long relay1EndTime = 0;
+bool relay1Extended = false;
 
 IRrecv irrecv(IR_PIN);
 
@@ -53,7 +58,7 @@ bool newPress = false;
 
 int displayangle(int angle)
 {
-  return angle - 19;
+  return 90 - (angle - 109);
 }
 
 void updateDisplay()
@@ -125,20 +130,23 @@ void processIRCommand()
     else if (rawData == 3810328320)
     {
       lastCommand = OK;
+      if (!relay1State)
+      {
+        // เริ่มต้นเปิด relay
+        relay1State = true;
+        relay1StartTime = millis();
+        relay1EndTime = relay1StartTime + RELAY_DEFAULT_TIME;
+        digitalWrite(RELAY1_PIN, HIGH);
+        updateDisplay();
+      }
     }
     else if (rawData == 3910598400)
     {
-      relay1State = !relay1State;
-      digitalWrite(RELAY1_PIN, relay1State ? HIGH : LOW);
       lastCommand = STAR;
-      updateDisplay();
     }
     else if (rawData == 4061003520)
     {
-      relay2State = !relay2State;
-      digitalWrite(RELAY2_PIN, relay2State ? HIGH : LOW);
       lastCommand = SQUARE;
-      updateDisplay();
     }
   }
 
@@ -147,16 +155,29 @@ void processIRCommand()
     switch (lastCommand)
     {
     case UP:
-      servo180Pos = constrain(servo180Pos + SERVO180_STEP, 109 - servo180range, 109 + servo180range);
+      servo180Pos = constrain(servo180Pos + SERVO180_STEP, 109 - 25, 109 + 15);
       break;
     case DOWN:
-      servo180Pos = constrain(servo180Pos - SERVO180_STEP, 109 - servo180range, 109 + servo180range);
+      servo180Pos = constrain(servo180Pos - SERVO180_STEP, 109 - 25, 109 + 15);
       break;
     case OK:
+      if (relay1State)
+      {
+        // ขยายเวลาเปิด relay
+        relay1EndTime = min(relay1EndTime + RELAY_EXTEND_TIME, millis() + RELAY_EXTEND_TIME);
+      }
+      break;
+    case SQUARE:
+      relay2State = !relay2State;
+      digitalWrite(RELAY2_PIN, relay2State ? HIGH : LOW);
+      delay(250);
+      break;
+    case STAR:
       servo180Pos = 109;
       break;
     }
     newPress = false;
+    updateDisplay();
   }
 
   servo180.write(servo180Pos);
@@ -165,6 +186,14 @@ void processIRCommand()
 
 void loop()
 {
+  // จัดการ relay1 timeout
+  if (relay1State && millis() > relay1EndTime)
+  {
+    relay1State = false;
+    digitalWrite(RELAY1_PIN, LOW);
+    updateDisplay();
+  }
+
   // Handle 360 servo timeout
   if (millis() - lastCmdTime > CMD_TIMEOUT)
   {
