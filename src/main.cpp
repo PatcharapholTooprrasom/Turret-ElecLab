@@ -14,7 +14,7 @@ const int RELAY2_PIN = PA4;
 #define OLED_RESET -1
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-#define SERVO360_PIN PB3
+#define SERVO360_PIN PA8
 #define SERVO180_PIN PB4
 
 Servo servo360;
